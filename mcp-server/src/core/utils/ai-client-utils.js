@@ -23,30 +23,67 @@ const DEFAULT_MODEL_CONFIG = {
  * @returns {Anthropic} Anthropic client instance
  * @throws {Error} If API key is missing
  */
-export function getAnthropicClientForMCP(session, log = console) {
+export function getAIClientForMCP(session, log = console) {
 	try {
-		// Extract API key from session.env or fall back to environment variables
-		const apiKey =
-			session?.env?.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+		let model = session?.env?.MODEL || process.env.MODEL || 'anthropic';
+		const supportedProviders = ['anthropic', 'openai', 'perplexity'];
 
-		if (!apiKey) {
-			throw new Error(
-				'ANTHROPIC_API_KEY not found in session environment or process.env'
-			);
+		// If MODEL is not a supported provider, but PERPLEXITY_API_KEY is set, treat as 'perplexity'
+		if (!supportedProviders.includes(model)) {
+			if (
+				(session?.env?.PERPLEXITY_API_KEY || process.env.PERPLEXITY_API_KEY) &&
+				(session?.env?.PERPLEXITY_MODEL || process.env.PERPLEXITY_MODEL)
+			) {
+				model = 'perplexity';
+			} else {
+				model = 'anthropic';
+			}
 		}
 
-		// Initialize and return a new Anthropic client
-		return new Anthropic({
-			apiKey,
-			defaultHeaders: {
-				'anthropic-beta': 'output-128k-2025-02-19' // Include header for increased token limit
+		if (model === 'anthropic') {
+			const apiKey =
+				session?.env?.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+			if (!apiKey) {
+				throw new Error(
+					'ANTHROPIC_API_KEY not found in session environment or process.env'
+				);
 			}
-		});
+			return new Anthropic({
+				apiKey,
+				defaultHeaders: {
+					'anthropic-beta': 'output-128k-2025-02-19'
+				}
+			});
+		} else if (model === 'openai') {
+			const { default: OpenAI } = require('openai');
+			const apiKey =
+				session?.env?.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+			if (!apiKey) {
+				throw new Error('OPENAI_API_KEY not found in session environment or process.env');
+			}
+			return new OpenAI({ apiKey });
+		} else if (model === 'perplexity') {
+			const { default: OpenAI } = require('openai');
+			const apiKey =
+				session?.env?.PERPLEXITY_API_KEY || process.env.PERPLEXITY_API_KEY;
+			if (!apiKey) {
+				throw new Error('PERPLEXITY_API_KEY not found in session environment or process.env');
+			}
+			return new OpenAI({
+				apiKey,
+				baseURL: 'https://api.perplexity.ai'
+			});
+		} else {
+			throw new Error(`Unsupported model selected: ${model}`);
+		}
 	} catch (error) {
-		log.error(`Failed to initialize Anthropic client: ${error.message}`);
+		log.error(`Failed to initialize AI client: ${error.message}`);
 		throw error;
 	}
 }
+
+// Compatibility export for legacy code/tests
+export const getAnthropicClientForMCP = getAIClientForMCP;
 
 /**
  * Get a Perplexity client instance initialized with MCP session environment variables
